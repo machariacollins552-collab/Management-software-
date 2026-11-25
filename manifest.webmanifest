@@ -1,0 +1,15 @@
+{
+  "name": "Property Manager",
+  "short_name": "Property",
+  "description": "Rent, balances and payments for tenants and landlords.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#14100d",
+  "theme_color": "#14100d",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
