@@ -4,6 +4,9 @@
   var SUPABASE_URL = 'https://iiorulhxzfjvdfopystd.supabase.co';
   var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlpb3J1bGh4emZqdmRmb3B5c3RkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTU1MzUwMTYsImV4cCI6MjExMTExMTAxNn0.XBYCDtUEcJdjqc5lzcNfaO0PyzSO5HCjoZ7DfN730lI';
 
+  // Refuse to run inside someone else's page (clickjacking protection).
+  if (window.top !== window.self) { document.documentElement.innerHTML = ''; return; }
+
   var app = document.getElementById('app');
   var toastEl = document.getElementById('toast');
 
@@ -193,7 +196,7 @@
 
   function renderMfa(factorId, enrolling, secret) {
     var intro = enrolling
-      ? '<h1>Secure your owner account</h1><p class="muted">Scan this code with an authenticator app (Google Authenticator, Authy, Microsoft Authenticator), then enter the 6-digit code.</p><img id="qr" class="qr" alt="Authenticator QR code"><p class="secret">' + esc(secret || '') + '</p>'
+      ? '<h1>Secure your owner account</h1><p class="muted">Scan this code with an authenticator app (Google Authenticator, Authy, Microsoft Authenticator), then enter the 6-digit code.</p><img id="qr" class="qr" alt="Authenticator QR code"><p class="secret">' + esc(secret || '') + '</p><button type="button" class="btn ghost small" data-action="copykey" data-key="' + esc(secret || '') + '">Copy key</button>'
       : '<h1>Two-factor code</h1><p class="muted">Enter the 6-digit code from your authenticator app.</p>';
     app.innerHTML = '<div class="center"><div class="glass authcard stack">' + intro +
       '<form data-form="mfa" data-factor="' + esc(factorId) + '" class="stack" novalidate>' +
@@ -481,9 +484,27 @@
     app.innerHTML = shell({ tabs: ADMIN_TABS, body: body, wide: true });
   }
 
+  // Owner sessions end after 15 minutes without any tap or key press.
+  var idleTimer = null, idleBound = false;
+  function armIdle() {
+    if (!S.profile || S.profile.role !== 'admin') return;
+    function reset() {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(function () { toast('Signed out after 15 minutes of inactivity.'); sb.auth.signOut(); }, 15 * 60 * 1000);
+    }
+    if (!idleBound) {
+      idleBound = true;
+      ['click', 'keydown', 'touchstart'].forEach(function (ev) {
+        document.addEventListener(ev, function () { if (S.profile && S.profile.role === 'admin') reset(); }, { passive: true });
+      });
+    }
+    reset();
+  }
+
   function render() {
     if (!S.profile) return;
     if (S.profile.role === 'admin') renderAdmin(); else renderTenant();
+    armIdle();
     window.scrollTo(0, 0);
   }
 
@@ -532,6 +553,10 @@
     install: async function () {
       if (!S.installPrompt) return;
       S.installPrompt.prompt(); await S.installPrompt.userChoice; S.installPrompt = null; render();
+    },
+    copykey: async function (el) {
+      try { await navigator.clipboard.writeText(el.dataset.key); toast('Key copied. Paste it into your authenticator app.'); }
+      catch (e) { toast('Could not copy. Press and hold the key to copy it.', true); }
     },
     approve: function (el) { return setApproval(el.dataset.id, true); },
     unapprove: function (el) { if (window.confirm('Suspend this tenant’s access? Their records stay.')) return setApproval(el.dataset.id, false); },
@@ -695,7 +720,7 @@
 
   sb.auth.onAuthStateChange(function (event) {
     if (event === 'SIGNED_OUT') {
-      setTimeout(function () { S.session = null; S.profile = null; S.detail = null; S.polling = false; renderAuth('login'); }, 0);
+      setTimeout(function () { clearTimeout(idleTimer); S.session = null; S.profile = null; S.detail = null; S.polling = false; renderAuth('login'); }, 0);
     }
   });
 
